@@ -19,14 +19,10 @@
 */
 
 import readline from 'node:readline'
-import process from 'node:process';
+import process, { argv } from 'node:process';
+import * as scratch from './scratch_default.js';
 import fs from 'node:fs';
-
-const CONTROL = {
-    CLEAR_SCREEN: "\x1b[2J",
-    RESET_CURSOR: "\x1b[;H",
-    LINEFEED: "\n"
-};
+import { View } from './view.js';
 
 const DECOR = {
     BLOCK: "■"
@@ -36,40 +32,29 @@ const DECOR = {
 const BUFFER_WIDTH = 80;
 const BUFFER_HEIGHT = 25;
 
-var RenderBuffer = Array(BUFFER_WIDTH).fill(0).map(x => Array(BUFFER_HEIGHT).fill(' '));
+var renderer = new View(BUFFER_WIDTH, BUFFER_HEIGHT);
 
 
-function refresh() {
-    process.stdout.write(CONTROL.CLEAR_SCREEN);
-    process.stdout.write(CONTROL.RESET_CURSOR);
-
-    for (let y = 0; y < BUFFER_HEIGHT; y++) {
-        for (let x = 0; x < BUFFER_WIDTH; x++) {
-            process.stdout.write(RenderBuffer[x][y]);
-        }
-        process.stdout.write(CONTROL.LINEFEED);
-    }
-}
-
-function doRenderHeader(textL, textR) {
+function updateHeader(textL, textR) {
     var i = 0;
     for (; i < textL.length; i++) {
-        RenderBuffer[i][0] = textL[i];
+        renderer.SetChar(i, 0, textL[i]);
     }
 
     const padding = BUFFER_WIDTH - textR.length;
 
     for (; i < padding; i++) {
-        RenderBuffer[i][0] = DECOR.BLOCK;
+        renderer.SetChar(i, 0, DECOR.BLOCK);
     }
 
     for (; i < BUFFER_WIDTH; i++) {
-        RenderBuffer[i][0] = textR[i - padding];
+        renderer.SetChar(i, 0, textR[i - padding]);
     }
+
+    renderer.Flush();
 }
 
-console.log(CONTROL.CLEAR_SCREEN);
-console.log(CONTROL.RESET_CURSOR);
+renderer.Purge();
 
 readline.emitKeypressEvents(process.stdin);
 
@@ -82,5 +67,96 @@ function keypress(character, keyMeta) {
 process.stdin.setRawMode(true);
 process.stdin.resume();
 
-doRenderHeader("  hello  ", "  world  ");
-refresh();
+const FLAGS = {
+    ALLOW_WRITE: false,
+    HEX: false
+};
+
+var FILE;
+var PATH = "~Scratch~";
+
+if (argv.length > 2 && argv[2].startsWith('-')) {
+    // Handle flags
+    if (argv[2].includes('h')) {
+        FLAGS.HEX = true;
+    }
+
+    if (argv[2].includes('W')) {
+        FLAGS.ALLOW_WRITE = true;
+    }
+
+    if (argv.length == 4) {
+        PATH = argv[3];
+        FILE = FLAGS.HEX ? fs.readFileSync(PATH, 'binary') : fs.readFileSync(PATH).toString();
+    } else if (argv.length > 4) {
+        console.log("USAGE: leaf [-hW] [path]");
+        process.exit(1);
+    } else {
+        FILE = scratch;
+    }
+} else {
+    if (argv.length == 3) {
+        PATH = argv[2];
+        FILE = FLAGS.HEX ? fs.readFileSync(PATH, 'binary') : fs.readFileSync(PATH).toString();
+    } else if (argv.length > 3) {
+        console.log(argv);
+        console.log("USAGE: leaf [-hW] [path]");
+        process.exit(1);
+    } else {
+        FILE = scratch;
+    }
+}
+
+const location = {
+    x: 0,
+    y: 0
+};
+var lines = [
+    ""
+];
+
+// Parse file
+if (FLAGS.HEX) {
+    const hex = FILE.toString('hex');
+    for (let index = 0; index < hex.length; index++) {
+        const c = hex[index];
+        if (index % BUFFER_WIDTH == 0 && index != 0) {
+            lines[lines.length - 1] += c;
+            lines.push("");
+        } else {
+            lines[lines.length - 1] += c;
+        }
+    }
+} else {
+    for (let index = 0; index < FILE.length; index++) {
+        const c = FILE[index];
+        switch (c) {
+            case '\n': {
+                lines[lines.length - 1] += c;
+                lines.push("");
+                break;
+            }
+            default: {
+                lines[lines.length - 1] += c;
+                break;
+            }
+        }
+    }
+}
+
+updateHeader(`  ${PATH}  `, "  Leaf Text Editor  ");
+
+function renderView() {
+    for (let index = location.y; index < lines.length && index < location.y + BUFFER_HEIGHT; index++) {
+        const line = lines[index];
+
+        for (let horiz = 0; horiz < line.length - location.x && horiz < BUFFER_WIDTH; horiz++) {
+            const char = line[horiz + location.x];
+            renderer.SetChar(horiz, (index - location.y) + 1, char);
+        }
+    }
+
+    renderer.Flush();
+}
+
+renderView();

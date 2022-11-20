@@ -1,0 +1,13 @@
+{
+  "name": "leaf",
+  "version": "1.0.0",
+  "description": "Basic text editor for Rosehip. (emulated)",
+  "main": "index.js",
+  "scripts": {
+
+  },
+  "keywords": [],
+  "author": "bubby932",
+  "license": "",
+  "type":"module"
+}
